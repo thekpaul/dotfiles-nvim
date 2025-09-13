@@ -69,11 +69,53 @@ nvim_lspconfig.config = function()
 		capabilities = require("blink.cmp").get_lsp_capabilities(),
 	})
 
+	vim.lsp.config("lua_ls", {
+		-- Neovim-tailored settings through the documented on_init pattern:
+		-- workspace .luarc declarations are kept, with no bleed-through;
+		-- luarc-less workspaces and the Neovim config get the tailoring below.
+		on_init = function(client)
+			if client.workspace_folders then
+				local path = client.workspace_folders[1].name
+				if
+					path ~= vim.fn.stdpath("config")
+					and (
+						vim.uv.fs_stat(path .. "/.luarc.json")
+						or vim.uv.fs_stat(path .. "/.luarc.jsonc")
+					)
+				then
+					return
+				end
+			end
+			client.config.settings.Lua =
+				vim.tbl_deep_extend("force", client.config.settings.Lua, {
+					runtime = {
+						version = "LuaJIT",
+						path = { "lua/?.lua", "lua/?/init.lua" },
+					},
+					workspace = {
+						checkThirdParty = false,
+						-- ${3rd}/luv/library supplies the vim.uv typings
+						-- that $VIMRUNTIME's meta files do not cover.
+						library = {
+							vim.env.VIMRUNTIME,
+							"${3rd}/luv/library",
+						},
+					},
+					diagnostics = { globals = { "vim" } },
+				})
+		end,
+		-- Base table the tailoring above extends; kept explicit so
+		-- the extend always has a Lua table to build on.
+		settings = { Lua = {} },
+	})
+
 	-- Auto-enable every Mason-installed server —
 	-- including ones installed from the :Mason UI mid-session, which
 	-- attach to already-open buffers without a restart.
 	-- Runs after the configs above so enabled servers pick them up.
-	require("mason-lspconfig").setup({})
+	require("mason-lspconfig").setup({
+		ensure_installed = { "lua_ls" },
+	})
 end
 
 return { nvim_lspconfig }
