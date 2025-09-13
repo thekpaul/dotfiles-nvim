@@ -15,11 +15,18 @@ local function has_c_compiler()
 		or vim.fn.executable("clang") == 1
 end
 
+-- Text objects ride the same module system;
+-- branches must pair with the nvim-treesitter branch (`master` with `master`).
+local textobjects = { "nvim-treesitter/nvim-treesitter-textobjects" }
+
+textobjects.branch = "master"
+
 local treesitter = { "nvim-treesitter/nvim-treesitter" }
 
-treesitter.branch = "master"
+treesitter.branch = textobjects.branch
 treesitter.lazy = false
 treesitter.build = has_c_compiler() and ":TSUpdate" or nil
+treesitter.dependencies = { textobjects }
 
 treesitter.config = function()
 	require("nvim-treesitter.configs").setup({
@@ -50,6 +57,32 @@ treesitter.config = function()
 			},
 		},
 		indent = { enable = true },
+		textobjects = {
+			select = {
+				enable = true,
+				-- Jump ahead to the next object when not inside one.
+				lookahead = true,
+				keymaps = {
+					["af"] = "@function.outer",
+					["if"] = "@function.inner",
+					["ac"] = "@class.outer",
+					["ic"] = "@class.inner",
+					["aa"] = "@parameter.outer",
+					["ia"] = "@parameter.inner",
+				},
+			},
+			move = {
+				enable = true,
+				set_jumps = true,
+				-- Same-intent overwrite of the built-in method motions,
+				-- generalised beyond curly-brace languages;
+				-- buffer-local, only where a parser attaches.
+				goto_next_start = { ["]m"] = "@function.outer" },
+				goto_next_end = { ["]M"] = "@function.outer" },
+				goto_previous_start = { ["[m"] = "@function.outer" },
+				goto_previous_end = { ["[M"] = "@function.outer" },
+			},
+		},
 	})
 end
 
