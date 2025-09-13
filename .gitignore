@@ -1,0 +1,4 @@
+# lazy.nvim writes its lockfile snapshot beside the configuration.
+# This setup keeps plugins on their upstream default branches on purpose, so
+# the snapshot is local state, not configuration.
+lazy-lock.json
