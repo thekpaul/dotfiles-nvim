@@ -24,7 +24,8 @@ map({ "n", "i" }, "<C-s>", function()
 end, { desc = "Strip trailing whitespace and write" })
 
 -- Buffers --------------------------------------------------------------------
-map("n", "<leader>bd", "<Cmd>bdelete<CR>", { desc = "Delete buffer" })
+map("n", "<leader>bn", "<Cmd>bnext<CR>", { desc = "Next buffer" })
+map("n", "<leader>bp", "<Cmd>bprevious<CR>", { desc = "Previous buffer" })
 
 -- Editing --------------------------------------------------------------------
 -- These overwrite built-in keys with same-intent wrappers:

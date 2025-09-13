@@ -39,6 +39,15 @@ snacks.keys = {
 	pick("<leader>fr", "recent", "Recent files"),
 	pick("<leader>fd", "diagnostics", "Diagnostics"),
 	pick("<leader>fD", "diagnostics_buffer", "Buffer diagnostics"),
+	-- snacks.bufdelete removes a buffer while keeping the window
+	-- that showed it; :bdelete would collapse that window.
+	{
+		"<leader>bd",
+		function()
+			require("snacks").bufdelete()
+		end,
+		desc = "Delete buffer",
+	},
 }
 
 return { snacks }
