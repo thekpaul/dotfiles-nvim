@@ -8,8 +8,15 @@
 #   ftplugin — every after/ftplugin file must apply cleanly to
 #              a buffer of its filetype.
 #
+# Gated group (network access, several minutes on a cold run):
+#   startup  — the tracked tree is copied into a throwaway HOME/XDG sandbox,
+#              every plugin is installed from scratch, and a subsequent boot
+#              must be completely silent.
+#              Enabled by NVIM_CHECK_FULL=1, or automatically under CI.
+#
 # Environment:
-#   NVIM_BIN   Neovim executable to check against (default: nvim).
+#   NVIM_BIN         Neovim executable to check against (default: nvim).
+#   NVIM_CHECK_FULL  Set to 1 to enable the sandboxed startup group.
 set -euo pipefail
 
 NVIM_BIN=${NVIM_BIN:-nvim}
@@ -71,6 +78,64 @@ for f in after/ftplugin/*.lua; do
         echo "ok: $f"
     fi
 done
+
+group "startup: sandboxed full boot"
+if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
+    sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/config/nvim" "$sandbox/data" "$sandbox/state" \
+        "$sandbox/cache"
+    git ls-files -z | tar --null --files-from=- -cf - \
+        | tar -C "$sandbox/config/nvim" -xf -
+    sandboxed() {
+        env -i HOME="$sandbox" PATH="$PATH" TERM=dumb \
+            XDG_CONFIG_HOME="$sandbox/config" \
+            XDG_DATA_HOME="$sandbox/data" \
+            XDG_STATE_HOME="$sandbox/state" \
+            XDG_CACHE_HOME="$sandbox/cache" \
+            "$NVIM_BIN" --headless "$@" +quitall
+    }
+    # First boot: bootstrap lazy.nvim and install every plugin from cold cache;
+    # only the exit status matters.
+    if ! sandboxed "+Lazy! install" >"$sandbox/install.log" 2>&1; then
+        printf 'FAIL: plugin installation boot\n'
+        tail -n 20 "$sandbox/install.log"
+        fail=1
+    else
+        # The install boot's `:TSUpdate` build hook asynchronously queues
+        # parser compiles and can exit before they finish;
+        # force-sync the parser set so the silent boot
+        # cannot race a half-compiled parser (`!` keeps the run promptless).
+        # The list mirrors `./lua/plugins/treesitter.lua`, which
+        # skips parser installs when no C compiler is present — also mirrored.
+        parsers_ok=1
+        if command -v cc >/dev/null 2>&1 \
+            || command -v gcc >/dev/null 2>&1 \
+            || command -v clang >/dev/null 2>&1; then
+            parsers="bash c cpp fish git_rebase gitcommit gitignore lua"
+            parsers="$parsers markdown markdown_inline nu python vim"
+            parsers="$parsers vimdoc yaml"
+            if ! sandboxed "+TSInstallSync! $parsers" \
+                >"$sandbox/parsers.log" 2>&1; then
+                printf 'FAIL: synchronous parser install\n'
+                tail -n 20 "$sandbox/parsers.log"
+                fail=1
+                parsers_ok=0
+            fi
+        fi
+        if [ "$parsers_ok" -eq 1 ]; then
+            out=$(sandboxed 2>&1)
+            if [ -n "$out" ]; then
+                printf 'FAIL: full startup produced output:\n%s\n' "$out"
+                fail=1
+            else
+                echo "ok: silent full startup after cold install"
+            fi
+        fi
+    fi
+    rm -rf "$sandbox"
+else
+    echo "skipped (set NVIM_CHECK_FULL=1 to enable)"
+fi
 
 if [ "$fail" -ne 0 ]; then
     echo
