@@ -10,8 +10,10 @@
 #
 # Gated group (network access, several minutes on a cold run):
 #   startup  — the tracked tree is copied into a throwaway HOME/XDG sandbox,
-#              every plugin is installed from scratch, and a subsequent boot
-#              must be completely silent.
+#              every plugin is installed from scratch,
+#              a subsequent boot must be completely silent, and
+#              a plain headless boot must restore a deleted parser
+#              (the contract the background installer relies on).
 #              Enabled by NVIM_CHECK_FULL=1, or automatically under CI.
 #
 # Environment:
@@ -108,9 +110,11 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
         # The list mirrors `./lua/plugins/treesitter.lua`, which
         # skips parser installs when no C compiler is present — also mirrored.
         parsers_ok=1
+        have_cc=0
         if command -v cc >/dev/null 2>&1 \
             || command -v gcc >/dev/null 2>&1 \
             || command -v clang >/dev/null 2>&1; then
+            have_cc=1
             parsers="bash c cpp fish git_rebase gitcommit gitignore lua"
             parsers="$parsers markdown markdown_inline nu python vim"
             parsers="$parsers vimdoc yaml"
@@ -129,6 +133,27 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
                 fail=1
             else
                 echo "ok: silent full startup after cold install"
+            fi
+            if [ "$have_cc" -eq 1 ]; then
+                # The background-installer contract: interactive boots
+                # delegate parser compiles to a detached headless instance, so
+                # a plain headless boot must notice a missing parser and
+                # restore it synchronously before exiting.
+                # Installer output is expected on that boot;
+                # only the restored parser is asserted.
+                # Runs last so the silent-boot check above sees a settled tree.
+                gi="$sandbox/data/nvim/lazy/nvim-treesitter/parser"
+                gi="$gi/gitignore.so"
+                rm -f "$gi"
+                if sandboxed >"$sandbox/reinstall.log" 2>&1 \
+                    && [ -f "$gi" ]; then
+                    echo "ok: headless boot restored a deleted parser"
+                else
+                    printf 'FAIL: headless boot did not restore %s\n' \
+                        "$gi"
+                    tail -n 10 "$sandbox/reinstall.log"
+                    fail=1
+                fi
             fi
         fi
     fi
