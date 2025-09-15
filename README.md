@@ -81,6 +81,94 @@ import later updates with:
 git subtree pull --prefix=nvim https://github.com/thekpaul/dotfiles-nvim.git main --squash
 ```
 
+## Structure
+
+- `init.lua`: the version guard, then ordered module loading.
+- [`lua/thekpaul/`](./lua/thekpaul/): the plugin-free core modules —
+  - `options.lua` — the built-in option baseline.
+  - `filetype.lua` — extra detection rules (shebang-aware shell split).
+  - `keymaps.lua` — mappings over built-in functionality only.
+  - `plugins.lua` — the lazy.nvim bootstrap and spec loading.
+- [`lua/plugins/`](./lua/plugins/):
+  one plugin spec file per concern (colours, finder, LSP, git, …).
+- [`after/ftplugin/`](./after/ftplugin/): per-language buffer refinements.
+- `tests/run-checks.sh`: the check suite (see Testing).
+
+## Version Expectations
+
+Development floor is Neovim **0.11**; `init.lua` refuses to load on
+older versions, and there are no compatibility branches for earlier releases.
+CI (see below) exercises both the floor line and the current release.
+
+## Plugin Versioning
+
+Plugin versions deliberately track their upstream default branches.
+`lazy-lock.json` is ignored rather than committed: instead of
+replaying a frozen graph, the check suite proves the configuration
+against live plugin heads — the sandboxed cold-start check
+installs everything from nothing and requires the following boot to be silent.
+Update with `:Lazy update`, then run the suite.
+
+## External Tool Assumptions
+
+Beyond Neovim itself only `git` is required —
+it bootstraps lazy.nvim and installs plugins.
+Everything else is probed at runtime, and
+absence disables the capability that needed it rather than breaking startup:
+
+- A C compiler (`cc`, `gcc` or `clang`) —
+  compiles the extra tree-sitter parsers; without one,
+  the parsers bundled with Neovim keep working and the extras are skipped.
+  Interactive sessions never block on those compiles: missing parsers are
+  built by a detached headless instance that exits on its own, and a
+  message announces completion — buffers opened afterwards pick the
+  parsers up automatically, `:e` re-applies buffers already open.
+  Headless sessions compile missing parsers synchronously on the boot
+  that notices them, which is exactly what that background instance
+  relies on.
+- `ripgrep` — powers the live-grep picker; file-based pickers work without.
+- Language servers — installed through `:Mason` (fetches `lua_ls` on its own);
+  any server Mason installs is enabled automatically.
+  basedpyright resolves its interpreter per workspace:
+  an activated `$VIRTUAL_ENV`, then a `.venv/` or Pixi default environment,
+  then `python3` from `$PATH`.
+- `latexmk` — VimTeX compilation; the TeX editing layer works without it.
+- WakaTime — loads only in interactive sessions, so scripted and headless runs
+  never touch it; the first interactive session without stored credentials
+  prompts for an API key.
+
+## Filetype Behaviour
+
+- Shell scripts are split by shebang into `bash` and `sh`, and
+  the two get different indentation profiles under `after/ftplugin/`:
+  four-space indentation for Bash and two-space indentation for POSIX sh.
+- Project-local `.nvim.lua` files are honoured (`exrc` is on).
+  They only execute after explicit approval through `:trust`, so
+  cloning a repository never runs its editor configuration unprompted.
+
+## Testing
+
+Run the check suite locally:
+```sh
+bash tests/run-checks.sh                    # offline groups
+NVIM_CHECK_FULL=1 bash tests/run-checks.sh  # plus the sandboxed cold start
+NVIM_BIN=/path/to/nvim bash tests/run-checks.sh
+```
+This exercises a `loadfile()` syntax sweep over every tracked Lua file,
+a plugin-free load of the core modules, and an application check for
+each `after/ftplugin/` profile;
+the gated group copies the tracked tree into throwaway `HOME`/XDG directories,
+cold-installs the plugin graph, and asserts a silent boot —
+no real editor state is touched.
+Silence is the contract throughout: any output fails.
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs Luacheck and StyLua in
+check mode, then the full check suite — cold start included — on
+push and pull request against `main`, across a Pixi-provisioned Neovim matrix:
+the oldest supported 0.11 line and the current release.
+
 ## Meta
 
 Authored and maintained by [Paul Kim](https://thekpaul.dev).
