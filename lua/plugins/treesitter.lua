@@ -56,7 +56,11 @@ treesitter.config = function()
 				-- "dockerfile",
 			},
 		},
-		indent = { enable = true },
+		indent = {
+			enable = true,
+			-- Delegated to VimTeX
+			disable = { "latex" },
+		},
 		textobjects = {
 			select = {
 				enable = true,
