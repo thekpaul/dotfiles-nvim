@@ -47,7 +47,11 @@ treesitter.config = function()
 			"vimdoc",
 			"yaml",
 		} or {},
-		sync_install = false,
+		-- Missing parsers from the list above are compiled
+		-- during the startup that first notices them, blocking until done:
+		-- the cost lands once, on that boot, instead of
+		-- leaking asynchronous installer output into later ones.
+		sync_install = true,
 		auto_install = false,
 		highlight = {
 			enable = true,
