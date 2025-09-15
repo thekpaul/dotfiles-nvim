@@ -1,0 +1,41 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Luacheck
+        run: sudo apt-get update && sudo apt-get install -y lua-check
+      - name: Luacheck
+        run: luacheck .
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          run-install: false
+      - name: StyLua
+        run: pixi exec stylua --check .
+
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Oldest supported line, and whatever is current —
+        # the floor must hold on both.
+        spec: ["nvim=0.11.*", "nvim>=0.11"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: prefix-dev/setup-pixi@v0
+        with:
+          run-install: false
+      - name: Run check harness
+        env:
+          NVIM_CHECK_FULL: "1"
+        run: pixi exec --spec '${{ matrix.spec }}' -- bash tests/run-checks.sh
