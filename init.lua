@@ -17,4 +17,5 @@ end
 require("thekpaul.options")
 require("thekpaul.filetype")
 require("thekpaul.keymaps")
+require("thekpaul.vscode")
 require("thekpaul.plugins")

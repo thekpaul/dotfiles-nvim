@@ -5,6 +5,8 @@
 #   syntax   — every tracked Lua file must compile under loadfile().
 #   core     — the plugin-free modules (options, filetype, keymaps) must
 #              load into a clean instance without producing any output.
+#   vscode   — the same load with the VS Code gate raised must stay silent
+#              where the extension's own Lua module is absent.
 #   ftplugin — every after/ftplugin file must apply cleanly to
 #              a buffer of its filetype.
 #
@@ -64,6 +66,18 @@ if [ -n "$out" ]; then
     fail=1
 else
     echo "ok: thekpaul.{options,filetype,keymaps}"
+fi
+
+group "vscode: simulated embedded load"
+out=$(run_quiet --clean \
+    --cmd "set runtimepath+=$REPO_ROOT" \
+    --cmd "lua vim.g.vscode = 1" \
+    --cmd "lua for _, m in ipairs({ 'options', 'filetype', 'keymaps', 'vscode' }) do require('thekpaul.' .. m) end")
+if [ -n "$out" ]; then
+    printf 'FAIL: simulated VS Code load produced output:\n%s\n' "$out"
+    fail=1
+else
+    echo "ok: thekpaul.vscode no-ops without the extension module"
 fi
 
 group "ftplugin: apply each filetype profile"
@@ -134,6 +148,16 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
             else
                 echo "ok: silent full startup after cold install"
             fi
+            # Same boot with the VS Code gate raised:
+            # gated-out plugins must stay as silent as the full set.
+            out=$(sandboxed --cmd "lua vim.g.vscode = 1" 2>&1)
+            if [ -n "$out" ]; then
+                printf 'FAIL: VS Code-gated startup produced output:\n%s\n' \
+                    "$out"
+                fail=1
+            else
+                echo "ok: silent startup with VS Code gating active"
+            fi
             if [ "$have_cc" -eq 1 ]; then
                 # The background-installer contract: interactive boots
                 # delegate parser compiles to a detached headless instance, so
@@ -141,7 +165,7 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
                 # restore it synchronously before exiting.
                 # Installer output is expected on that boot;
                 # only the restored parser is asserted.
-                # Runs last so the silent-boot check above sees a settled tree.
+                # Runs last so the silent-boot checks above see a settled tree.
                 gi="$sandbox/data/nvim/lazy/nvim-treesitter/parser"
                 gi="$gi/gitignore.so"
                 rm -f "$gi"

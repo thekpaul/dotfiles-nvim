@@ -3,9 +3,11 @@ Small utilities that earn their keep without a category of their own.
 --]=]
 
 -- Case-preserving substitution (:S) and case-coercion operators.
+-- Pure command/operator semantics, so it also loads inside VS Code.
 local abolish = { "tpope/vim-abolish" }
 
 abolish.event = "VeryLazy"
+abolish.cond = true
 
 -- Time tracking, loaded only when a UI attaches:
 -- a fresh installation gets its API-key prompt in a real session, while

@@ -35,6 +35,9 @@ end
 local surround = { "kylechui/nvim-surround" }
 
 surround.event = { "BufReadPre", "BufNewFile" }
+-- Normal-mode operator semantics work identically inside VS Code,
+-- so this spec opts back in to loading there.
+surround.cond = true
 surround.opts = {}
 -- The stock visual-mode `S` would clobber the built-in
 -- linewise-change; keep that and take surround-the-selection to

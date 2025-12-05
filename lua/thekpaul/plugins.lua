@@ -35,6 +35,9 @@ vim.opt.rtp:prepend(lazypath)
 
 require("lazy").setup({
 	spec = { { import = "plugins" } },
+	-- Inside VS Code, panels and painting belong to VS Code:
+	-- unless a spec opts in explicitly with `cond = true`.
+	defaults = { cond = not vim.g.vscode },
 	change_detection = { notify = false },
 	install = { colorscheme = { "seoul256", "default" } },
 })

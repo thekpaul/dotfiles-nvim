@@ -146,6 +146,24 @@ absence disables the capability that needed it rather than breaking startup:
   They only execute after explicit approval through `:trust`, so
   cloning a repository never runs its editor configuration unprompted.
 
+## Inside VS Code
+
+With the [vscode-neovim] extension, this same configuration runs
+as VS Code's editing engine.
+Panels and painting belong to VS Code, so plugins stay unloaded by default and
+only specs that opt in with `cond = true` (pure operator/command plugins
+such as nvim-surround and vim-abolish) participate.
+Finder-shaped mappings — `<leader>ff`, `<leader>fg`, etc. — are bridged to
+their matching VS Code commands, as is most of the `<leader>g` family, which
+drives VS Code's own staging, reset and diff commands.
+The LSP mappings follow suit, reaching VS Code's navigation, peek and
+formatting commands in place of a language server of their own, so
+muscle memory carries over unchanged.
+Some keys belonging to gated-out plugins carry over where VS Code can stand in:
+`<leader>ft` searches the annotation keywords todo-comments would have listed.
+
+[vscode-neovim]: https://github.com/vscode-neovim/vscode-neovim
+
 ## Testing
 
 Run the check suite locally:
@@ -155,11 +173,12 @@ NVIM_CHECK_FULL=1 bash tests/run-checks.sh  # plus the sandboxed cold start
 NVIM_BIN=/path/to/nvim bash tests/run-checks.sh
 ```
 This exercises a `loadfile()` syntax sweep over every tracked Lua file,
-a plugin-free load of the core modules, and an application check for
-each `after/ftplugin/` profile;
+a plugin-free load of the core modules, a simulated VS Code load
+proving the gating no-ops without the extension present, and
+an application check for each `after/ftplugin/` profile;
 the gated group copies the tracked tree into throwaway `HOME`/XDG directories,
 cold-installs the plugin graph, and asserts a silent boot —
-no real editor state is touched.
+plain and again with the VS Code gate active — no real editor state is touched.
 Silence is the contract throughout: any output fails.
 
 ## CI
