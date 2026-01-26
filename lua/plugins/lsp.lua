@@ -146,6 +146,13 @@ nvim_lspconfig.config = function()
 	require("mason-lspconfig").setup({
 		ensure_installed = { "lua_ls" },
 	})
+
+	-- Nushell serves its language server from the shell binary itself
+	-- (`nu --lsp`), requiring manual enabling.
+	-- Guarded on binary existence to keep Nushell-less environments quiet.
+	if vim.fn.executable("nu") == 1 then
+		vim.lsp.enable("nushell")
+	end
 end
 
 return { nvim_lspconfig }

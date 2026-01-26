@@ -129,6 +129,8 @@ absence disables the capability that needed it rather than breaking startup:
 - `ripgrep` — powers the live-grep picker; file-based pickers work without.
 - Language servers — installed through `:Mason` (fetches `lua_ls` on its own);
   any server Mason installs is enabled automatically.
+  The one exception is Nushell, whose server ships inside the shell binary
+  (`nu --lsp`): it is enabled whenever `nu` is on `$PATH`.
   basedpyright resolves its interpreter per workspace:
   an activated `$VIRTUAL_ENV`, then a `.venv/` or Pixi default environment,
   then `python3` from `$PATH`.
