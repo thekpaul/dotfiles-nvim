@@ -3,17 +3,23 @@
 #
 # Offline groups, in order:
 #   syntax   — every tracked Lua file must compile under loadfile().
-#   core     — the plugin-free modules (options, filetype, keymaps) must
-#              load into a clean instance without producing any output.
+#   core     — the plugin-free modules (options, filetype, keymaps,
+#              format) must load into a clean instance without producing
+#              any output.
 #   vscode   — the same load with the VS Code gate raised must stay silent
 #              where the extension's own Lua module is absent.
 #   ftplugin — every after/ftplugin file must apply cleanly to
 #              a buffer of its filetype.
+#   format   — the gq dispatcher must wrap a Python comment at its
+#              72-column prose width while a code line keeps the
+#              ftplugin's 79-column textwidth (no server attached).
 #
 # Gated group (network access, several minutes on a cold run):
 #   startup  — the tracked tree is copied into a throwaway HOME/XDG sandbox,
 #              every plugin is installed from scratch,
-#              a subsequent boot must be completely silent, and
+#              a subsequent boot must be completely silent, a Python
+#              docstring must reflow at the dispatcher's prose width
+#              (the tree-sitter leg the offline group cannot reach), and
 #              a plain headless boot must restore a deleted parser
 #              (the contract the background installer relies on).
 #              Enabled by NVIM_CHECK_FULL=1, or automatically under CI.
@@ -60,12 +66,12 @@ fi
 group "core: plugin-free module load"
 out=$(run_quiet --clean \
     --cmd "set runtimepath+=$REPO_ROOT" \
-    --cmd "lua for _, m in ipairs({ 'options', 'filetype', 'keymaps' }) do require('thekpaul.' .. m) end")
+    --cmd "lua for _, m in ipairs({ 'options', 'filetype', 'keymaps', 'format' }) do require('thekpaul.' .. m) end")
 if [ -n "$out" ]; then
     printf 'FAIL: core modules produced output:\n%s\n' "$out"
     fail=1
 else
-    echo "ok: thekpaul.{options,filetype,keymaps}"
+    echo "ok: thekpaul.{options,filetype,keymaps,format}"
 fi
 
 group "vscode: simulated embedded load"
@@ -94,6 +100,31 @@ for f in after/ftplugin/*.lua; do
         echo "ok: $f"
     fi
 done
+
+group "format: gq prose/code dispatch"
+# No plugins and no server here, so classification runs on the
+# 'commentstring' fallback and the code path exercises the internal
+# fallback of vim.lsp.formatexpr(): a 77-column Python comment must wrap
+# at the 72-column prose width with its leader repeated, while a
+# 75-column code line stays put under the ftplugin's 79-column textwidth.
+out=$(run_quiet --clean \
+    --cmd "set runtimepath+=$REPO_ROOT,$REPO_ROOT/after" \
+    --cmd "filetype plugin on" \
+    --cmd "lua require('thekpaul.options')" \
+    "+setfiletype python" \
+    "+call setline(1, ['# ' . repeat('abcd ', 15), \"x = '\" . repeat('abc ', 17) . \"z'\"])" \
+    "+lua assert(vim.bo.formatexpr:find('thekpaul'), 'formatexpr not wired')" \
+    "+normal! gggqq" \
+    "+lua assert(vim.fn.line('\$') == 3 and #vim.fn.getline(1) <= 72 and #vim.fn.getline(2) <= 72 and vim.fn.getline(2):find('^# '), 'comment did not wrap at 72 with its leader')" \
+    "+normal! Ggqq" \
+    "+lua assert(vim.fn.line('\$') == 3 and #vim.fn.getline(3) == 75, 'code line was rewrapped')" \
+    "+set nomodified")
+if [ -n "$out" ]; then
+    printf 'FAIL: gq dispatch produced output:\n%s\n' "$out"
+    fail=1
+else
+    echo "ok: gq wraps prose at 72, leaves code to the fallback"
+fi
 
 group "startup: sandboxed full boot"
 if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
@@ -158,7 +189,30 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
             else
                 echo "ok: silent startup with VS Code gating active"
             fi
+            # The gq dispatcher's docstring leg needs a tree-sitter
+            # highlighter, which only exists where the python parser
+            # was compiled: the 77-column docstring body must reflow
+            # at the 72-column prose width and the closing quotes must
+            # stay on their own line. The explicit parse() removes any
+            # dependence on a headless redraw having parsed the tree.
             if [ "$have_cc" -eq 1 ]; then
+                printf '%s\n' 'def f():' '    """Summary.' '' \
+                    "    $(printf 'abcd %.0s' $(seq 14))end" '    """' \
+                    >"$sandbox/fmt.py"
+                out=$(sandboxed "$sandbox/fmt.py" \
+                    '+lua vim.treesitter.get_parser(0):parse(true)' \
+                    '+4' '+normal! gqq' \
+                    '+lua assert(vim.fn.line("$") == 6, "docstring did not wrap at 72")' \
+                    '+lua assert(#vim.fn.getline(4) <= 72 and #vim.fn.getline(5) <= 72, "docstring line over 72 columns")' \
+                    '+lua assert(vim.trim(vim.fn.getline(6)) == [["""]], "closing quotes were disturbed")' \
+                    '+set nomodified' 2>&1)
+                if [ -n "$out" ]; then
+                    printf 'FAIL: docstring gq produced output:\n%s\n' \
+                        "$out"
+                    fail=1
+                else
+                    echo "ok: docstring reflowed at the 72-column width"
+                fi
                 # The background-installer contract: interactive boots
                 # delegate parser compiles to a detached headless instance, so
                 # a plain headless boot must notice a missing parser and

@@ -44,6 +44,15 @@ vim.o.softtabstop = 4
 vim.o.expandtab = false
 vim.o.smartindent = true
 
+-- Formatting -----------------------------------------------------------------
+-- `gq` dispatches through `thekpaul.format`: comment and docstring
+-- ranges keep Vim's internal comment-aware formatting (at a per-filetype
+-- prose width), ranges containing code go to the language server.
+-- Setting the global default here also keeps the LSP attach defaults
+-- from installing plain `vim.lsp.formatexpr()` over it — they only ever
+-- fill an empty 'formatexpr'.
+vim.o.formatexpr = "v:lua.require'thekpaul.format'.formatexpr()"
+
 -- Search ---------------------------------------------------------------------
 vim.o.ignorecase = true
 vim.o.smartcase = true

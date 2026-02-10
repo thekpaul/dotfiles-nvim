@@ -88,6 +88,7 @@ git subtree pull --prefix=nvim https://github.com/thekpaul/dotfiles-nvim.git mai
   - `options.lua` — the built-in option baseline.
   - `filetype.lua` — extra detection rules (shebang-aware shell split).
   - `keymaps.lua` — mappings over built-in functionality only.
+  - `format.lua` — the `gq` dispatcher (see Formatting).
   - `plugins.lua` — the lazy.nvim bootstrap and spec loading.
 - [`lua/plugins/`](./lua/plugins/):
   one plugin spec file per concern (colours, finder, LSP, git, …).
@@ -148,6 +149,37 @@ absence disables the capability that needed it rather than breaking startup:
   They only execute after explicit approval through `:trust`, so
   cloning a repository never runs its editor configuration unprompted.
 
+## Formatting
+
+`gq` dispatches by what the selected lines are (`lua/thekpaul/format.lua`):
+
+- Comment and docstring ranges keep Vim's internal comment-aware
+  formatting, wrapped at a per-filetype *prose width*: Python comments and
+  docstrings reflow at 72 columns (PEP 8) while its code keeps the
+  79-column `textwidth`; filetypes without an entry wrap prose at the
+  buffer's own width.
+- Ranges containing any code line are delegated whole to the language
+  server's range formatting. Without a capable server the internal
+  formatter takes over at the buffer's `textwidth`, so buffers with no
+  server keep stock `gq` behaviour throughout.
+
+Classification is per line, sampled at the first non-blank character:
+tree-sitter highlight captures where a highlighter is active (docstrings
+included, via `@string.documentation`), the `commentstring` leader
+otherwise. Known limits, all deliberate:
+
+- Mixed selections are never split — code plus comments goes to the
+  server, which typically reformats the code and leaves the prose alone.
+- A line of code with a trailing comment counts as code.
+- Docstring detection needs the tree-sitter highlighter; without a parser
+  attached, docstrings classify as code and take the server path.
+- The reflow is the internal greedy wrap: a closing `"""` sitting directly
+  under body text (no blank line between) belongs to the same paragraph
+  and multi-line motions will pull it up; PEP 257-shaped docstrings —
+  summary line, blank line, body, closing quotes — are unaffected.
+- `gw` bypasses `formatexpr` by definition (it is also what the dispatcher
+  itself drives), so it always wraps at the buffer's `textwidth`.
+
 ## Inside VS Code
 
 With the [vscode-neovim] extension, this same configuration runs
@@ -176,8 +208,9 @@ NVIM_BIN=/path/to/nvim bash tests/run-checks.sh
 ```
 This exercises a `loadfile()` syntax sweep over every tracked Lua file,
 a plugin-free load of the core modules, a simulated VS Code load
-proving the gating no-ops without the extension present, and
-an application check for each `after/ftplugin/` profile;
+proving the gating no-ops without the extension present,
+an application check for each `after/ftplugin/` profile, and
+a `gq` dispatch check (prose wraps at its prose width, code does not);
 the gated group copies the tracked tree into throwaway `HOME`/XDG directories,
 cold-installs the plugin graph, and asserts a silent boot —
 plain and again with the VS Code gate active — no real editor state is touched.
