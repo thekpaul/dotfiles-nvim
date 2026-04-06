@@ -99,7 +99,18 @@ git subtree pull --prefix=nvim https://github.com/thekpaul/dotfiles-nvim.git mai
 
 Development floor is Neovim **0.11**; `init.lua` refuses to load on
 older versions, and there are no compatibility branches for earlier releases.
-CI (see below) exercises both the floor line and the current release.
+Newer capabilities are layered behind `vim.fn.has("nvim-0.12")` gates —
+one configuration catering to both releases with version awareness.
+Currently gated:
+
+- LSP inline (ghost-text) completion, enabled per buffer
+  for servers that announce it: `<leader>lc` toggles it, and
+  insert-mode `<C-l>` accepts the pending suggestion.
+- LSP linked editing range: cursor-synchronised edits of identical ranges for
+  servers that support it.
+
+CI (see below) exercises the floor with the gates off,
+the 0.12 line with them on, and whatever release is current.
 
 ## Plugin Versioning
 
@@ -221,7 +232,9 @@ Silence is the contract throughout: any output fails.
 GitHub Actions (`.github/workflows/ci.yml`) runs Luacheck and StyLua in
 check mode, then the full check suite — cold start included — on
 push and pull request against `main`, across a Pixi-provisioned Neovim matrix:
-the oldest supported 0.11 line and the current release.
+the oldest supported 0.11 line proving the floor with gates off,
+a 0.12 line proving the gated additions, and
+an open leg tracking the current release.
 
 ## Meta
 
