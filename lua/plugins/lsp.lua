@@ -81,8 +81,44 @@ nvim_lspconfig.config = function()
 			-- LSP formatting stays an explicit request instead.
 			vim.bo[ev.buf].formatexpr = ""
 			bufmap("<leader>lf", vim.lsp.buf.format, "LSP format buffer")
+
+			-- Neovim 0.12 capability: inline (ghost-text) completion,
+			-- enabled only for servers that announce it.
+			-- Nothing below exists on the 0.11 floor, so
+			-- the version-gate keeps one configuration serving both lines.
+			if vim.fn.has("nvim-0.12") == 1 then
+				local client = vim.lsp.get_client_by_id(ev.data.client_id)
+				local method = "textDocument/inlineCompletion"
+				if client and client:supports_method(method) then
+					vim.lsp.inline_completion.enable(true, { bufnr = ev.buf })
+				end
+				bufmap("<leader>lc", function()
+					local ic = vim.lsp.inline_completion
+					local on = ic.is_enabled({ bufnr = ev.buf })
+					ic.enable(not on, { bufnr = ev.buf })
+				end, "Toggle inline completion")
+				-- Accepting falls through to the literal key
+				-- when no suggestion is pending, per the documented idiom on
+				-- `<Tab>`; already owned by blink.cmp for snippet jumps, so
+				-- `<C-l>` (no other keymaps defined) is claimed instead.
+				vim.keymap.set("i", "<C-l>", function()
+					if not vim.lsp.inline_completion.get() then
+						return "<C-l>"
+					end
+				end, {
+					buffer = ev.buf,
+					expr = true,
+					desc = "Accept inline completion",
+				})
+			end
 		end,
 	})
+
+	-- Neovim 0.12 capability: cursor-synchronised edits of identical ranges
+	-- (e.g. HTML tag pairs) for servers announcing linkedEditingRange support.
+	if vim.fn.has("nvim-0.12") == 1 then
+		vim.lsp.linked_editing_range.enable(true)
+	end
 
 	-- Completion capabilities for every server.
 	vim.lsp.config("*", {
