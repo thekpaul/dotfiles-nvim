@@ -27,9 +27,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Oldest supported line, and whatever is current —
-        # the floor must hold on both.
-        spec: ["nvim=0.11.*", "nvim>=0.11"]
+        # The 0.11 leg proves the floor with every version gate off;
+        # the 0.12 leg proves the gated additions;
+        # the open leg tracks whatever is current.
+        spec: ["nvim=0.11.*", "nvim=0.12.*", "nvim>=0.11"]
     steps:
       - uses: actions/checkout@v7
       - uses: prefix-dev/setup-pixi@v0
