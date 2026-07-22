@@ -17,8 +17,9 @@
 # Gated group (network access, several minutes on a cold run):
 #   startup  — the tracked tree is copied into a throwaway HOME/XDG sandbox,
 #              every plugin is installed from scratch,
-#              a subsequent boot must be completely silent, a Python
-#              docstring must reflow at the dispatcher's prose width
+#              a subsequent boot must be completely silent,
+#              a minimal TeX buffer must then open with VimTeX initialised,
+#              a Python docstring must reflow at the dispatcher's prose width
 #              (the tree-sitter leg the offline group cannot reach), and
 #              a plain headless boot must restore a deleted parser
 #              (the contract the background installer relies on).
@@ -188,6 +189,25 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
                 fail=1
             else
                 echo "ok: silent startup with VS Code gating active"
+            fi
+            # VimTeX must initialise on this binary:
+            # the version gate in lua/plugins/tex.lua picks a checkout
+            # per Neovim version, and a rejected load announces itself with
+            # an `echoerr` this boot captures.
+            # Offline by construction — the sandbox has no TeX toolchain, so
+            # tex.lua disables the compiler and
+            # only the editing layer is exercised.
+            printf '%s\n' '\documentclass{article}' '\begin{document}' \
+                'x' '\end{document}' >"$sandbox/min.tex"
+            out=$(sandboxed "$sandbox/min.tex" \
+                "+lua assert(vim.b.vimtex, 'VimTeX did not initialise')" \
+                "+lua assert(vim.bo.comments:find('%%'), 'TeX comments')" \
+                2>&1)
+            if [ -n "$out" ]; then
+                printf 'FAIL: TeX buffer produced output:\n%s\n' "$out"
+                fail=1
+            else
+                echo "ok: VimTeX initialised silently in a TeX buffer"
             fi
             # The gq dispatcher's docstring leg needs a tree-sitter
             # highlighter, which only exists where the python parser

@@ -120,6 +120,9 @@ replaying a frozen graph, the check suite proves the configuration
 against live plugin heads — the sandboxed cold-start check
 installs everything from nothing and requires the following boot to be silent.
 Update with `:Lazy update`, then run the suite.
+The one pin is VimTeX: upstream's floor moved past Neovim 0.11, so
+`lua/plugins/tex.lua` version-gates the spec onto releases —
+the latest on 0.12.4 and newer, `v2.18` below — instead of a branch head.
 
 ## External Tool Assumptions
 

@@ -7,6 +7,18 @@ only the compile commands are absent.
 
 local vimtex = { "lervag/vimtex" }
 
+-- Upstream raised its floor to Neovim 0.12.4 on 2026-07-22
+-- (lervag/vimtex@1d27d952); below that, VimTeX refuses to load at all.
+-- Pinning is upstream's own sanctioned answer for older editors
+-- (README "Requirements"; `:h vimtex-requirements`), which names v2.17.
+-- v2.18 predates the bump and still gates on `has('nvim-0.10')`, so it
+-- is tried first — if it misbehaves on 0.11, drop this to "v2.17".
+if vim.fn.has("nvim-0.12.4") == 1 then
+	vimtex.version = "*"
+else
+	vimtex.tag = "v2.18"
+end
+
 -- VimTeX is a filetype plugin and lazy-loads itself:
 -- startup only sources its ftdetect files and a small command shim (~0.5 ms);
 -- the real work waits for a TeX buffer.
