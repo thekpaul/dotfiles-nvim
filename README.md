@@ -5,23 +5,35 @@ This repository tracks configurations for the Neovim text editor.
 
 ## Installation Methods
 
-Install this repository at `$XDG_CONFIG_HOME/nvim`:
+Install this repository at `$XDG_CONFIG_HOME/nvim`;
+if environment variable `XDG_CONFIG_HOME` is not set on your system,
+use default fallback `$HOME/.config`:
 
 ### Git Worktree (Recommended)
 
 Create a new Git worktree from the submodule copy inside your
 local superproject installation to the destination path:
-```sh
-git worktree add $XDG_CONFIG_HOME/nvim -b main --track <remote_name>/main
-```
+- Unix-based systems:
+  ```sh
+  git worktree add ${XDG_CONFIG_HOME:-~/.config}/nvim -b main --track <remote_name>/main
+  ```
+- Windows systems with PowerShell:
+  ```pwsh
+  git worktree add "$($env:XDG_CONFIG_HOME ?? $env:LOCALAPPDATA)\nvim" -b main --track <remote_name>/main
+  ```
 where `remote_name` is the name of the "remote" repository from which
 your superproject installation is cloned.
 
 ### Standalone Installation from Remote
 
-```sh
-git clone https://github.com/thekpaul/dotfiles-nvim.git $XDG_CONFIG_HOME/nvim
-```
+- Unix-based systems:
+  ```sh
+  git clone https://github.com/thekpaul/dotfiles-nvim.git ${XDG_CONFIG_HOME:-~/.config}/nvim
+  ```
+- Windows systems with PowerShell:
+  ```pwsh
+  git clone https://github.com/thekpaul/dotfiles-nvim.git "$($env:XDG_CONFIG_HOME ?? $env:LOCALAPPDATA)\nvim"
+  ```
 
 ### (Sym)link from Local Superproject Installation (Not recommended)
 
@@ -35,7 +47,7 @@ git clone https://github.com/thekpaul/dotfiles-nvim.git $XDG_CONFIG_HOME/nvim
 
 - Unix-based systems where `ln` is available:
   ```sh
-  ln -s <SUPERPROJECT_INSTALLATION_PATH>/nvim $XDG_CONFIG_HOME/nvim
+  ln -s <SUPERPROJECT_INSTALLATION_PATH>/nvim ${XDG_CONFIG_HOME:-~/.config}/nvim
   ```
   Using the `-s` flag creates a "symbolic" ("soft") link, which is
   most likely to be the only type of link possible to create for directories
@@ -44,7 +56,7 @@ git clone https://github.com/thekpaul/dotfiles-nvim.git $XDG_CONFIG_HOME/nvim
   possible for **individual files**.
 - Windows systems with PowerShell, using the `New-Item` cmdlet:
   ```pwsh
-  New-Item -Path $env:XDG_CONFIG_HOME\nvim -ItemType Junction -Value <SUPERPROJECT_INSTALLATION_PATH>\nvim
+  New-Item -Path "$($env:XDG_CONFIG_HOME ?? $env:LOCALAPPDATA)\nvim" -ItemType Junction -Value <SUPERPROJECT_INSTALLATION_PATH>\nvim
   ```
   `ItemType` may be changed to `HardLink` for **individual files** or
   `SymbolicLink` to create "shortcut"s ("symbolic" links).
