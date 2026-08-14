@@ -75,8 +75,13 @@ treesitter.config = function()
 		},
 		indent = {
 			enable = true,
-			-- Delegated to VimTeX
-			disable = { "latex" },
+			disable = {
+				-- Delegated to VimTeX.
+				"latex",
+				-- Paragraph reflow inserts lines before reindenting them;
+				-- Markdown query sees those incomplete nodes as column zero.
+				"markdown",
+			},
 		},
 		textobjects = {
 			select = {

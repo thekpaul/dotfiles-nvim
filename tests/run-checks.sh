@@ -209,6 +209,27 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
             else
                 echo "ok: VimTeX initialised silently in a TeX buffer"
             fi
+            # Markdown uses the native formatter
+            # rather than the global comment/code dispatcher.
+            # Its tree-sitter indent query returns column zero for
+            # incomplete continuation nodes while `gq` is creating them, so
+            # indentation is disabled while highlighting remains active.
+            printf '  %s\n' "$(printf 'word %.0s' $(seq 24))end" \
+                >"$sandbox/fmt.md"
+            out=$(sandboxed "$sandbox/fmt.md" \
+                '+setlocal textwidth=40' \
+                '+lua assert(vim.bo.indentexpr == "", "Markdown indentexpr still active")' \
+                '+lua assert(vim.bo.formatexpr == "", "Markdown formatexpr not native")' \
+                '+silent normal! gg0gqq' \
+                '+lua local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false); assert(#lines == 4, "Markdown paragraph did not reflow"); for _, line in ipairs(lines) do assert(line:find("^  %S"), "Markdown continuation lost indentation") end' \
+                '+set nomodified' 2>&1)
+            if [ -n "$out" ]; then
+                printf 'FAIL: Markdown paragraph reflow produced output:\n%s\n' \
+                    "$out"
+                fail=1
+            else
+                echo "ok: Markdown reflow preserved paragraph indentation"
+            fi
             # The gq dispatcher's docstring leg needs a tree-sitter
             # highlighter, which only exists where the python parser
             # was compiled: the 77-column docstring body must reflow
