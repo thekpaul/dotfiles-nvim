@@ -115,6 +115,11 @@ Newer capabilities are layered behind `vim.fn.has("nvim-0.12")` gates —
 one configuration catering to both releases with version awareness.
 Currently gated:
 
+- Tree-sitter follows upstream's incompatible branch split:
+  Neovim 0.11 uses the frozen `master` generation, while
+  0.12 and newer use the rewritten `main` generation.
+  The two checkouts and their parser/query directories remain isolated so
+  switching Neovim versions cannot expose one generation to the other.
 - LSP inline (ghost-text) completion, enabled per buffer
   for servers that announce it: `<leader>lc` toggles it, and
   insert-mode `<C-l>` accepts the pending suggestion.
@@ -132,6 +137,8 @@ replaying a frozen graph, the check suite proves the configuration
 against live plugin heads — the sandboxed cold-start check
 installs everything from nothing and requires the following boot to be silent.
 Update with `:Lazy update`, then run the suite.
+Tree-sitter is version-gated in separately named `master` and `main` checkouts,
+as upstream made the latter an incompatible Neovim 0.12-only rewrite.
 The one pin is VimTeX: upstream's floor moved past Neovim 0.11, so
 `lua/plugins/tex.lua` version-gates the spec onto releases —
 the latest on 0.12.4 and newer, `v2.18` below — instead of a branch head.
@@ -143,16 +150,19 @@ it bootstraps lazy.nvim and installs plugins.
 Everything else is probed at runtime, and
 absence disables the capability that needed it rather than breaking startup:
 
-- A C compiler (`cc`, `gcc` or `clang`) —
-  compiles the extra tree-sitter parsers; without one,
+- A C compiler (`cc`, `gcc`, `clang`) — compiles the extra tree-sitter parsers;
+  the 0.12-and-newer branch additionally needs `curl`, `tar` and
+  `tree-sitter` CLI 0.26.1 or newer.
+  Without the applicable toolchain,
   the parsers bundled with Neovim keep working and the extras are skipped.
   Interactive sessions never block on those compiles: missing parsers are
-  built by a detached headless instance that exits on its own, and a
-  message announces completion — buffers opened afterwards pick the
-  parsers up automatically, `:e` re-applies buffers already open.
-  Headless sessions compile missing parsers synchronously on the boot
-  that notices them, which is exactly what that background instance
-  relies on.
+  delegated to one detached headless instance on both version lines.
+  That instance uses the legacy synchronous installer on 0.11 and
+  waits for the rewritten asynchronous task on newer releases, so
+  it does not exit until the complete missing set has landed.
+  A message announces completion — buffers opened afterwards pick the parsers
+  up automatically, while `:e` re-applies buffers already open.
+  Ordinary headless sessions uphold the same completion-before-exit contract.
 - `ripgrep` — powers the live-grep picker; file-based pickers work without.
 - Language servers — installed through `:Mason` (fetches `lua_ls` on its own);
   any server Mason installs is enabled automatically.
@@ -239,7 +249,10 @@ an application check for each `after/ftplugin/` profile, and
 a `gq` dispatch check (prose wraps at its prose width, code does not);
 the gated group copies the tracked tree into throwaway `HOME`/XDG directories,
 cold-installs the plugin graph, and asserts a silent boot —
-plain and again with the VS Code gate active — no real editor state is touched.
+plain and again with the VS Code gate active — then exercises
+the active Tree-sitter generation, including Bash heredoc injections and
+the direct and UI-delegated parser-installation lifecycle.
+No real editor state is touched.
 Silence is the contract throughout: any output fails.
 
 ## CI
@@ -247,9 +260,9 @@ Silence is the contract throughout: any output fails.
 GitHub Actions (`.github/workflows/ci.yml`) runs Luacheck and StyLua in
 check mode, then the full check suite — cold start included — on
 push and pull request against `main`, across a Pixi-provisioned Neovim matrix:
-the oldest supported 0.11 line proving the floor with gates off,
-a 0.12 line proving the gated additions, and
-an open leg tracking the current release.
+the oldest supported 0.11 line paired with Tree-sitter CLI 0.25,
+a 0.12 line paired with CLI 0.26, and
+an open leg tracking the current release and modern toolchain.
 
 ## Meta
 

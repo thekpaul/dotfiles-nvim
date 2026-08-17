@@ -27,10 +27,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The 0.11 leg proves the floor with every version gate off;
-        # the 0.12 leg proves the gated additions;
-        # the open leg tracks whatever is current.
-        spec: ["nvim=0.11.*", "nvim=0.12.*", "nvim>=0.11"]
+        include:
+          # nvim-treesitter's frozen master branch supports CLI 0.25.x;
+          # its rewritten main branch requires CLI 0.26.1 or newer.
+          - nvim: "nvim=0.11.*"
+            tree_sitter: "tree-sitter-cli=0.25.*"
+          - nvim: "nvim=0.12.*"
+            tree_sitter: "tree-sitter-cli>=0.26.1"
+          - nvim: "nvim>=0.11"
+            tree_sitter: "tree-sitter-cli>=0.26.1"
     steps:
       - uses: actions/checkout@v7
       - uses: prefix-dev/setup-pixi@v0
@@ -39,4 +44,9 @@ jobs:
       - name: Run check harness
         env:
           NVIM_CHECK_FULL: "1"
-        run: pixi exec --spec '${{ matrix.spec }}' -- bash tests/run-checks.sh
+        run: >-
+          pixi exec
+          --spec '${{ matrix.nvim }}'
+          --spec '${{ matrix.tree_sitter }}'
+          --spec c-compiler
+          -- bash tests/run-checks.sh

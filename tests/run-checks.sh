@@ -18,11 +18,12 @@
 #   startup  — the tracked tree is copied into a throwaway HOME/XDG sandbox,
 #              every plugin is installed from scratch,
 #              a subsequent boot must be completely silent,
+#              a Bash heredoc must parse without an injection error,
 #              a minimal TeX buffer must then open with VimTeX initialised,
 #              a Python docstring must reflow at the dispatcher's prose width
 #              (the tree-sitter leg the offline group cannot reach), and
-#              a plain headless boot must restore a deleted parser
-#              (the contract the background installer relies on).
+#              both headless and UI-triggered installer sessions must restore
+#              a deleted parser set before later sessions resume silently.
 #              Enabled by NVIM_CHECK_FULL=1, or automatically under CI.
 #
 # Environment:
@@ -33,6 +34,24 @@ set -euo pipefail
 NVIM_BIN=${NVIM_BIN:-nvim}
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO_ROOT"
+
+modern=$(
+    "$NVIM_BIN" --clean --headless \
+        '+lua io.write(vim.fn.has("nvim-0.12"))' +quitall 2>/dev/null
+)
+modern_cli=0
+if command -v tree-sitter >/dev/null 2>&1; then
+    version=$(tree-sitter --version 2>/dev/null || true)
+    if [[ $version =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+        ts_major=${BASH_REMATCH[1]}
+        ts_minor=${BASH_REMATCH[2]}
+        ts_patch=${BASH_REMATCH[3]}
+        if ((ts_major > 0 || ts_minor > 26 \
+            || (ts_minor == 26 && ts_patch >= 1))); then
+            modern_cli=1
+        fi
+    fi
+fi
 
 fail=0
 group() { printf '\n=== %s ===\n' "$*"; }
@@ -142,6 +161,15 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
             XDG_CACHE_HOME="$sandbox/cache" \
             "$NVIM_BIN" --headless "$@" +quitall
     }
+    sandboxed_ui() {
+        env -i HOME="$sandbox" PATH="$PATH" TERM=xterm-256color \
+            NVIM_TEST_BIN="$NVIM_BIN" \
+            XDG_CONFIG_HOME="$sandbox/config" \
+            XDG_DATA_HOME="$sandbox/data" \
+            XDG_STATE_HOME="$sandbox/state" \
+            XDG_CACHE_HOME="$sandbox/cache" \
+            script -qefc '"$NVIM_TEST_BIN" +quitall!' /dev/null
+    }
     # First boot: bootstrap lazy.nvim and install every plugin from cold cache;
     # only the exit status matters.
     if ! sandboxed "+Lazy! install" >"$sandbox/install.log" 2>&1; then
@@ -149,23 +177,39 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
         tail -n 20 "$sandbox/install.log"
         fail=1
     else
-        # The install boot's `:TSUpdate` build hook asynchronously queues
-        # parser compiles and can exit before they finish;
-        # force-sync the parser set so the silent boot
-        # cannot race a half-compiled parser (`!` keeps the run promptless).
-        # The list mirrors `./lua/plugins/treesitter.lua`, which
-        # skips parser installs when no C compiler is present — also mirrored.
+        # Force-sync the active branch's parser set so
+        # the silent boot cannot race a half-compiled parser.
+        # The legacy API has a synchronous command;
+        # the modern API exposes a waitable asynchronous task.
+        # The list mirrors `./lua/plugins/treesitter.lua`, including
+        # its toolchain-dependent opt-out.
         parsers_ok=1
-        have_cc=0
+        have_parsers=0
         if command -v cc >/dev/null 2>&1 \
             || command -v gcc >/dev/null 2>&1 \
             || command -v clang >/dev/null 2>&1; then
-            have_cc=1
-            parsers="bash c cpp fish git_rebase gitcommit gitignore lua"
-            parsers="$parsers markdown markdown_inline nu python vim"
-            parsers="$parsers vimdoc yaml"
-            if ! sandboxed "+TSInstallSync! $parsers" \
-                >"$sandbox/parsers.log" 2>&1; then
+            have_parsers=1
+        fi
+        if [ "$modern" -eq 1 ] \
+            && { ! command -v curl >/dev/null 2>&1 \
+                || ! command -v tar >/dev/null 2>&1 \
+                || [ "$modern_cli" -eq 0 ]; }; then
+            have_parsers=0
+        fi
+        parsers="bash c cpp fish git_rebase gitcommit gitignore lua"
+        parsers="$parsers markdown markdown_inline nu python vim vimdoc yaml"
+        if [ "$have_parsers" -eq 1 ]; then
+            if [ "$modern" -eq 1 ]; then
+                install="require('nvim-treesitter').install"
+                languages="{'bash','c','cpp','fish','git_rebase',"
+                languages="$languages'gitcommit','gitignore','lua','markdown',"
+                languages="$languages'markdown_inline','nu','python','vim',"
+                languages="$languages'vimdoc','yaml'}"
+                parser_cmd="+lua assert($install($languages):wait(300000), 'parser install failed')"
+            else
+                parser_cmd="+TSInstallSync! $parsers"
+            fi
+            if ! sandboxed "$parser_cmd" >"$sandbox/parsers.log" 2>&1; then
                 printf 'FAIL: synchronous parser install\n'
                 tail -n 20 "$sandbox/parsers.log"
                 fail=1
@@ -179,6 +223,38 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
                 fail=1
             else
                 echo "ok: silent full startup after cold install"
+            fi
+            if [ "$modern" -eq 1 ]; then
+                active_plugin=nvim-treesitter-main
+                inactive_plugin=nvim-treesitter-master
+            else
+                active_plugin=nvim-treesitter-master
+                inactive_plugin=nvim-treesitter-main
+            fi
+            out=$(sandboxed \
+                "+lua local p = require('lazy.core.config').plugins; assert(p['$active_plugin'], 'active Tree-sitter generation missing'); assert(not p['$inactive_plugin'], 'inactive Tree-sitter generation imported')" \
+                2>&1)
+            if [ -n "$out" ]; then
+                printf 'FAIL: Tree-sitter import gate produced output:\n%s\n' \
+                    "$out"
+                fail=1
+            else
+                echo "ok: only $active_plugin entered the plugin graph"
+            fi
+            if [ "$have_parsers" -eq 1 ]; then
+                printf '%s\n' '#!/usr/bin/env bash' 'cat <<EOF' 'body' 'EOF' \
+                    >"$sandbox/heredoc.sh"
+                out=$(sandboxed "$sandbox/heredoc.sh" \
+                    '+lua assert(vim.bo.filetype == "bash", "not a Bash buffer")' \
+                    '+lua vim.treesitter.get_parser(0):parse(true)' \
+                    '+redraw' '+set nomodified' 2>&1)
+                if [ -n "$out" ]; then
+                    printf 'FAIL: Bash heredoc highlighting produced output:\n%s\n' \
+                        "$out"
+                    fail=1
+                else
+                    echo "ok: Bash heredoc parsed without injection errors"
+                fi
             fi
             # Same boot with the VS Code gate raised:
             # gated-out plugins must stay as silent as the full set.
@@ -236,12 +312,14 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
             # at the 72-column prose width and the closing quotes must
             # stay on their own line. The explicit parse() removes any
             # dependence on a headless redraw having parsed the tree.
-            if [ "$have_cc" -eq 1 ]; then
+            if [ "$have_parsers" -eq 1 ]; then
                 printf '%s\n' 'def f():' '    """Summary.' '' \
                     "    $(printf 'abcd %.0s' $(seq 14))end" '    """' \
                     >"$sandbox/fmt.py"
                 out=$(sandboxed "$sandbox/fmt.py" \
                     '+lua vim.treesitter.get_parser(0):parse(true)' \
+                    '+lua assert(vim.bo.indentexpr ~= "", "Python indentexpr not configured")' \
+                    '+lua assert(vim.fn.maparg("af", "o", false, true).buffer == 1, "Python text object not mapped")' \
                     '+4' '+normal! gqq' \
                     '+lua assert(vim.fn.line("$") == 6, "docstring did not wrap at 72")' \
                     '+lua assert(#vim.fn.getline(4) <= 72 and #vim.fn.getline(5) <= 72, "docstring line over 72 columns")' \
@@ -254,24 +332,70 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
                 else
                     echo "ok: docstring reflowed at the 72-column width"
                 fi
-                # The background-installer contract: interactive boots
-                # delegate parser compiles to a detached headless instance, so
-                # a plain headless boot must notice a missing parser and
-                # restore it synchronously before exiting.
-                # Installer output is expected on that boot;
-                # only the restored parser is asserted.
-                # Runs last so the silent-boot checks above see a settled tree.
-                gi="$sandbox/data/nvim/lazy/nvim-treesitter/parser"
-                gi="$gi/gitignore.so"
-                rm -f "$gi"
-                if sandboxed >"$sandbox/reinstall.log" 2>&1 \
-                    && [ -f "$gi" ]; then
-                    echo "ok: headless boot restored a deleted parser"
+                # Both generations must uphold the same installation contract:
+                # one headless installer restores every missing parser
+                # before it exits, and a UI boot delegates that blocking work to
+                # one detached headless process.
+                # The following session must then
+                # have nothing left to install and remain silent.
+                # Runs last so earlier silence checks see a settled tree.
+                if [ "$modern" -eq 1 ]; then
+                    gi="$sandbox/data/nvim/treesitter-main/parser/gitignore.so"
+                    bash_parser="$sandbox/data/nvim/treesitter-main/parser/bash.so"
                 else
-                    printf 'FAIL: headless boot did not restore %s\n' \
-                        "$gi"
+                    gi="$sandbox/data/nvim/treesitter-master/parser/gitignore.so"
+                    bash_parser="$sandbox/data/nvim/treesitter-master/parser/bash.so"
+                fi
+                rm -f "$gi" "$bash_parser"
+                if sandboxed >"$sandbox/reinstall.log" 2>&1 \
+                    && [ -f "$gi" ] && [ -f "$bash_parser" ]; then
+                    echo "ok: one headless boot restored all deleted parsers"
+                else
+                    printf 'FAIL: headless boot did not restore parser set\n'
                     tail -n 10 "$sandbox/reinstall.log"
                     fail=1
+                fi
+                out=$(sandboxed 2>&1)
+                if [ -n "$out" ]; then
+                    printf 'FAIL: post-install boot produced output:\n%s\n' \
+                        "$out"
+                    fail=1
+                else
+                    echo "ok: session after headless install stayed silent"
+                fi
+
+                if command -v script >/dev/null 2>&1; then
+                    rm -f "$gi" "$bash_parser"
+                    if sandboxed_ui >"$sandbox/ui-install.log" 2>&1; then
+                        ts_attempts=0
+                        while { [ ! -f "$gi" ] \
+                            || [ ! -f "$bash_parser" ]; } \
+                            && [ "$ts_attempts" -lt 3000 ]; do
+                            sleep 0.1
+                            ts_attempts=$((ts_attempts + 1))
+                        done
+                        if [ -f "$gi" ] && [ -f "$bash_parser" ]; then
+                            echo "ok: one UI boot delegated all deleted parsers"
+                        else
+                            printf 'FAIL: UI boot did not restore parser set\n'
+                            tail -n 10 "$sandbox/ui-install.log"
+                            fail=1
+                        fi
+                    else
+                        printf 'FAIL: pseudo-terminal UI boot\n'
+                        tail -n 10 "$sandbox/ui-install.log"
+                        fail=1
+                    fi
+                    out=$(sandboxed 2>&1)
+                    if [ -n "$out" ]; then
+                        printf 'FAIL: post-background boot produced output:\n%s\n' \
+                            "$out"
+                        fail=1
+                    else
+                        echo "ok: session after background install stayed silent"
+                    fi
+                else
+                    echo "skipped UI installer check (`script` unavailable)"
                 fi
             fi
         fi

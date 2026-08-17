@@ -1,9 +1,9 @@
 --[=[
-Tree-sitter based highlighting and indentation.
+Tree-sitter based highlighting and indentation for Neovim 0.11.
 
-Pinned to the master branch:
-upstream's main-branch rewrite replaces the plugin's entire module surface, and
-this configuration tracks the stable API until that settles.
+Pinned to the master branch: upstream's main-branch rewrite
+replaces the plugin's entire module surface and requires Neovim 0.12, while
+this legacy configuration retains the legacy `master`-side API.
 Parser compilation needs a C compiler; when none is present,
 the parsers bundled with Neovim keep working and
 the extra ones are simply skipped instead of failing every startup.
@@ -12,51 +12,36 @@ built by a detached headless instance of this same configuration, which
 takes the synchronous branch and therefore exits on its own when done.
 --]=]
 
-local function has_c_compiler()
-	return vim.fn.executable("cc") == 1
-		or vim.fn.executable("gcc") == 1
-		or vim.fn.executable("clang") == 1
-end
+local common = require("plugins.treesitter.common")
+local install_dir = vim.fn.stdpath("data") .. "/treesitter-master"
 
 -- Text objects ride the same module system;
 -- branches must pair with the nvim-treesitter branch (`master` with `master`).
 local textobjects = { "nvim-treesitter/nvim-treesitter-textobjects" }
 
+textobjects.name = "nvim-treesitter-textobjects-master"
 textobjects.branch = "master"
 
 local treesitter = { "nvim-treesitter/nvim-treesitter" }
 
+treesitter.name = "nvim-treesitter-master"
 treesitter.branch = textobjects.branch
 treesitter.lazy = false
-treesitter.build = has_c_compiler() and ":TSUpdate" or nil
+treesitter.build = common.has_c_compiler() and ":TSUpdate" or nil
 treesitter.dependencies = { textobjects }
 
 treesitter.config = function()
-	local ensure = has_c_compiler()
-			and {
-				"bash",
-				"c",
-				"cpp",
-				"fish",
-				"git_rebase",
-				"gitcommit",
-				"gitignore",
-				"lua",
-				"markdown",
-				"markdown_inline",
-				"nu",
-				"python",
-				"vim",
-				"vimdoc",
-				"yaml",
-			}
-		or {}
+	local ensure = common.has_c_compiler() and common.parser_names or {}
 	-- A UI attached means a human is waiting; headless instances —
 	-- scripts, CI, and the background installer spawned below —
 	-- can afford to block on parser compiles.
 	local interactive = #vim.api.nvim_list_uis() > 0
 
+	-- Keep 0.11-compatible parsers and queries out of the modern runtime.
+	-- The legacy API creates parser/ and queries/ beneath this runtime root.
+	vim.opt.runtimepath:prepend(install_dir)
 	require("nvim-treesitter.configs").setup({
+		parser_install_dir = install_dir,
 		-- Headless boots compile missing parsers synchronously,
 		-- blocking until done: the cost lands once, on the boot that notices,
 		-- instead of leaking asynchronous installer output into later ones.
@@ -78,8 +63,8 @@ treesitter.config = function()
 			disable = {
 				-- Delegated to VimTeX.
 				"latex",
-				-- Paragraph reflow inserts lines before reindenting them;
-				-- Markdown query sees those incomplete nodes as column zero.
+				-- Markdown reflow creates incomplete nodes whose query returns
+				-- column zero; native autoindent preserves paragraph indent.
 				"markdown",
 			},
 		},
@@ -134,35 +119,7 @@ treesitter.config = function()
 			return vim.fn.filereadable(dir .. "/" .. lang .. ".so") == 0
 		end, ensure)
 	end
-	local absent = missing()
-	if #absent == 0 then
-		return
-	end
-	vim.system(
-		{ vim.v.progpath, "--headless", "+quitall!" },
-		{ detach = true },
-		vim.schedule_wrap(function()
-			local left = missing()
-			if #left == 0 then
-				vim.notify(
-					"Tree-sitter parsers installed; "
-						.. "re-open buffers with :e to apply."
-				)
-			else
-				vim.notify(
-					"Tree-sitter parsers still missing: "
-						.. table.concat(left, ", "),
-					vim.log.levels.WARN
-				)
-			end
-		end)
-	)
-	vim.notify(
-		(
-			"Compiling %d tree-sitter parser(s) in the background; "
-			.. ":e applies them once done."
-		):format(#absent)
-	)
+	common.install_in_background(missing)
 end
 
 return { treesitter }
