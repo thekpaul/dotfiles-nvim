@@ -13,7 +13,7 @@ takes the synchronous branch and therefore exits on its own when done.
 --]=]
 
 local common = require("plugins.treesitter.common")
-local install_dir = vim.fn.stdpath("data") .. "/treesitter-master"
+local install_dir = common.install_dir("master")
 
 -- Text objects ride the same module system;
 -- branches must pair with the nvim-treesitter branch (`master` with `master`).

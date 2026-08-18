@@ -9,7 +9,7 @@ the parsers bundled with Neovim keep working and
 the extra ones are simply skipped instead of failing every startup.
 --]=]
 local common = require("plugins.treesitter.common")
-local install_dir = vim.fn.stdpath("data") .. "/treesitter-main"
+local install_dir = common.install_dir("main")
 
 -- Main's rewritten API needs the external CLI, not just a C compiler, to
 -- build parsers from source; the version check is nontrivial enough to

@@ -16,6 +16,24 @@ if not ok then
 	return
 end
 
+-- The nvim-treesitter plugin is deliberately disabled in VS Code
+-- (see `./lua/plugins/treesitter/init.lua`), so its `setup()` never exposes
+-- the separately installed parsers and queries on 'runtimepath'.
+-- Core ftplugins may still use Tree-sitter (Markdown does), so
+-- make that runtime discoverable without loading the plugin itself.
+-- The generation gate mirrors init.lua's, and
+-- the path comes from `common.install_dir()` rather than a literal, so
+-- neither can drift out of sync with the canonical Tree-sitter configurations.
+local treesitter_common = require("plugins.treesitter.common")
+local generation = vim.fn.has("nvim-0.12") == 1 and "main" or "master"
+local ts_runtime = vim.fs.normalize(treesitter_common.install_dir(generation))
+if
+	vim.uv.fs_stat(ts_runtime)
+	and not vim.tbl_contains(vim.opt.runtimepath:get(), ts_runtime)
+then
+	vim.opt.runtimepath:prepend(ts_runtime)
+end
+
 -- Anything in `opts` reaches the command as its argument list;
 -- a plain table is wrapped into one, which is
 -- the shape object-taking commands such as the search below expect.

@@ -19,6 +19,14 @@ M.parser_names = {
 	"yaml",
 }
 
+-- `master.lua` and `main.lua` each keep their own generation's parser/query
+-- installs under a name-scoped directory; centralized here so
+-- a rename cannot drift out of sync with callers outside this pair that
+-- need to locate it (`./lua/thekpaul/vscode.lua`'s runtimepath injection).
+function M.install_dir(generation)
+	return vim.fn.stdpath("data") .. "/treesitter-" .. generation
+end
+
 function M.executable(name)
 	return vim.fn.executable(name) == 1
 end
