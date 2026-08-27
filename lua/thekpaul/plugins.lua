@@ -38,6 +38,11 @@ require("lazy").setup({
 	-- Inside VS Code, panels and painting belong to VS Code:
 	-- unless a spec opts in explicitly with `cond = true`.
 	defaults = { cond = not vim.g.vscode },
+	performance = {
+		rtp = {
+			reset = not vim.g.vscode,
+		},
+	},
 	change_detection = { notify = false },
 	install = { colorscheme = { "seoul256", "default" } },
 })

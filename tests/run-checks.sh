@@ -18,6 +18,8 @@
 #   startup  — the tracked tree is copied into a throwaway HOME/XDG sandbox,
 #              every plugin is installed from scratch,
 #              a subsequent boot must be completely silent,
+#              a simulated VS Code boot must preserve its injected runtimes
+#              while importing only explicitly compatible plugins,
 #              a Bash heredoc must parse without an injection error,
 #              a minimal TeX buffer must then open with VimTeX initialised,
 #              a Python docstring must reflow at the dispatcher's prose width
@@ -227,9 +229,11 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
             if [ "$modern" -eq 1 ]; then
                 active_plugin=nvim-treesitter-main
                 inactive_plugin=nvim-treesitter-master
+                active_runtime=treesitter-main
             else
                 active_plugin=nvim-treesitter-master
                 inactive_plugin=nvim-treesitter-main
+                active_runtime=treesitter-master
             fi
             out=$(sandboxed \
                 "+lua local p = require('lazy.core.config').plugins; assert(p['$active_plugin'], 'active Tree-sitter generation missing'); assert(not p['$inactive_plugin'], 'inactive Tree-sitter generation imported')" \
@@ -256,15 +260,23 @@ if [ "${NVIM_CHECK_FULL:-0}" = "1" ] || [ -n "${CI:-}" ]; then
                     echo "ok: Bash heredoc parsed without injection errors"
                 fi
             fi
-            # Same boot with the VS Code gate raised:
-            # gated-out plugins must stay as silent as the full set.
-            out=$(sandboxed --cmd "lua vim.g.vscode = 1" 2>&1)
+            # Reproduce the extension's pre-init bootstrap: raise its global,
+            # expose its Lua module and prepend its runtime before init.lua.
+            # Empty Tree-sitter install root is enough to prove path ownership;
+            # parser compilation itself is exercised independently.
+            vscode_runtime="$sandbox/vscode-neovim-runtime"
+            mkdir -p "$vscode_runtime" \
+                "$sandbox/data/nvim/$active_runtime"
+            out=$(sandboxed \
+                --cmd "lua vim.g.vscode = 1; local runtime = vim.fs.normalize([[$vscode_runtime]]); vim.opt.rtp:prepend(runtime); package.preload.vscode = function() return { action = function() end } end" \
+                "+lua local c = require('lazy.core.config'); assert(c.options.performance.rtp.reset == false, 'Lazy reset VS Code runtimepath'); local rtp = vim.opt.runtimepath:get(); local vscode = vim.fs.normalize([[$vscode_runtime]]); local treesitter = vim.fs.normalize(vim.fn.stdpath('data') .. '/$active_runtime'); assert(vim.tbl_contains(rtp, vscode), 'VSCode-Neovim runtime missing'); assert(vim.tbl_contains(rtp, treesitter), 'Tree-sitter runtime missing'); local p = c.plugins; assert(vim.tbl_count(p) == 2 and p['vim-abolish'] and p['nvim-surround'], 'unexpected VS Code plugin graph: ' .. vim.inspect(vim.tbl_keys(p)))" \
+                2>&1)
             if [ -n "$out" ]; then
-                printf 'FAIL: VS Code-gated startup produced output:\n%s\n' \
+                printf 'FAIL: VS Code integration startup:\n%s\n' \
                     "$out"
                 fail=1
             else
-                echo "ok: silent startup with VS Code gating active"
+                echo "ok: VS Code retained runtimes and compatible plugins only"
             fi
             # VimTeX must initialise on this binary:
             # the version gate in lua/plugins/tex.lua picks a checkout
