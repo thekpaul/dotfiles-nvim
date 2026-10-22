@@ -5,26 +5,6 @@ mason.nvim provides the installer for the server binaries themselves, and
 mason-lspconfig enables whatever Mason has installed.
 --]=]
 
--- Interpreter resolution for Python servers:
--- prefer an explicitly activated environment, then
--- well-known project-local environment layouts, then
--- whatever python3 is on PATH.
-local function resolve_python(root)
-	if vim.env.VIRTUAL_ENV then
-		return vim.env.VIRTUAL_ENV .. "/bin/python"
-	end
-	for _, rel in ipairs({
-		"/.venv/bin/python",
-		"/.pixi/envs/default/bin/python",
-	}) do
-		local candidate = root .. rel
-		if vim.uv.fs_stat(candidate) then
-			return candidate
-		end
-	end
-	return vim.fn.exepath("python3")
-end
-
 local nvim_lspconfig = { "neovim/nvim-lspconfig" }
 
 nvim_lspconfig.dependencies = {
@@ -165,15 +145,8 @@ nvim_lspconfig.config = function()
 		settings = { Lua = {} },
 	})
 
-	vim.lsp.config("basedpyright", {
-		before_init = function(_, config)
-			local root = config.root_dir or vim.uv.cwd()
-			config.settings =
-				vim.tbl_deep_extend("force", config.settings or {}, {
-					python = { pythonPath = resolve_python(root) },
-				})
-		end,
-	})
+	-- Python: the project's own ruff and ty, found on PATH.
+	vim.lsp.enable({ "ruff", "ty" })
 
 	-- Auto-enable every Mason-installed server —
 	-- including ones installed from the :Mason UI mid-session, which
